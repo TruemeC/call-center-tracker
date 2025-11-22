@@ -55,10 +55,14 @@
         const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot, collection, query, serverTimestamp, deleteDoc } = window.firebase;
 
         // --- Configuration (Targets, Thresholds, Phrases) ---
-        // Access global variables and ensure they are parsed/handled correctly
+        
+        // Fix: Ensure these variables are defined even if the global ones are missing (as in GitHub Pages)
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
-        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        
+        // Fix: Use a placeholder object for firebaseConfig when global is missing to prevent crash
+        const defaultFirebaseConfig = { projectId: 'missing-project-id', apiKey: 'dummy-key' };
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
 
         const ADMIN_PASSCODE = '8974'; // كلمة المرور الإدارية
 
@@ -228,8 +232,17 @@
             // 1. Firebase Initialization and Authentication
             useEffect(() => {
                 let app, firestore, authInstance;
+                
+                // Fix: Check if firebaseConfig has meaningful data (i.e. not the default dummy data)
+                const isConfigValid = firebaseConfig.projectId && firebaseConfig.projectId !== 'missing-project-id';
+
+                if (!isConfigValid) {
+                    setLoading(false);
+                    setStatusMessage('فشل في تهيئة قاعدة البيانات. تأكد من تهيئة Firebase بشكل صحيح.');
+                    return; // Stop initialization if config is invalid
+                }
+
                 try {
-                    // Fix: Use global firebaseConfig
                     app = initializeApp(firebaseConfig);
                     firestore = getFirestore(app);
                     authInstance = getAuth(app);
@@ -243,11 +256,9 @@
                             setIsAuthReady(true);
                         } else {
                             try {
-                                // Fix: Use global initialAuthToken
                                 if (initialAuthToken) {
                                     await signInWithCustomToken(authInstance, initialAuthToken);
                                 } else {
-                                    // Use a temporary unique ID for anonymous users in this simple setup
                                     await signInAnonymously(authInstance);
                                 }
                             } catch (error) {
@@ -260,7 +271,7 @@
                     return () => unsubscribe();
                 } catch (e) {
                     console.error("Failed to initialize Firebase:", e);
-                    setStatusMessage("فشل في تهيئة قاعدة البيانات. تحقق من الإعدادات.");
+                    setStatusMessage(`فشل في التهيئة: ${e.message}. يرجى التحقق من مفتاح Firebase.`);
                     setLoading(false);
                 }
             }, []);
@@ -269,7 +280,6 @@
             useEffect(() => {
                 if (!db || !isAuthReady) return;
 
-                // We use the employee name as the document ID, and store in public data collection
                 const collectionPath = `artifacts/${appId}/public/data/callCenterPerformance`;
                 const q = query(collection(db, collectionPath));
 
@@ -279,6 +289,10 @@
                         newEmployees[doc.id] = { id: doc.id, ...doc.data() };
                     });
                     setEmployees(newEmployees);
+                    // Clear the general failure message if data is successfully loaded
+                    if (statusMessage.includes('فشل في تهيئة قاعدة البيانات')) {
+                        setStatusMessage('');
+                    }
                 }, (error) => {
                     console.error("Firestore snapshot error:", error);
                     setStatusMessage("خطأ في جلب بيانات الأداء.");
@@ -366,6 +380,13 @@
                     setStatusMessage("الرجاء تحديد الاسم أولاً.");
                     return;
                 }
+                
+                // Check if Firebase is truly ready and configured
+                const isConfigValid = firebaseConfig.projectId && firebaseConfig.projectId !== 'missing-project-id';
+                if (!isConfigValid) {
+                     setStatusMessage('فشل في تهيئة قاعدة البيانات. يرجى مراجعة إعدادات Firebase المنشورة.');
+                    return;
+                }
 
                 const callsValue = parseInt(dailyCalls || '0', 10);
                 const bookingsValue = parseInt(dailyBookings || '0', 10);
@@ -415,7 +436,7 @@
                     };
                     await sendToGoogleSheet(sheetData);
 
-                    setStatusMessage(`تم ${editingId ? 'تعديل' : 'تسجيل'} أداء اليوم بنجاح لـ ${userName}.`);
+                    setStatusMessage(`تم ${editingId ? 'تعديل' : 'تسجيل'} أداء اليوم بنجاح لـ ${userName}. وتم إرسال التقرير اليومي.`);
                     setEditingId(null);
                     setDailyCalls(''); setDailyBookings(''); setDailyAttendance(''); setDailyLeads('50'); 
                 } catch (error) {
@@ -508,6 +529,28 @@
                     </div>
                 );
             }
+            
+            // Render error state if configuration is invalid
+            const isConfigValid = firebaseConfig.projectId && firebaseConfig.projectId !== 'missing-project-id';
+            if (!isConfigValid) {
+                return (
+                    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4 font-sans" dir="rtl">
+                        <div className="p-8 bg-white rounded-xl shadow-xl border border-red-200 text-center max-w-md">
+                            <h2 className="text-2xl font-bold text-red-600 mb-4">خطأ في الإعدادات</h2>
+                            <p className="text-gray-700 mb-6">
+                                فشل في تهيئة قاعدة البيانات. هذا يحدث عادةً عند نشر التطبيق على منصة خارجية (مثل GitHub Pages) دون تزويدها ببيانات Firebase.
+                            </p>
+                            <p className="text-sm font-semibold text-red-500">
+                                للإصلاح: يرجى فتح ملف index.html في محرر الأكواد واستبدال بيانات الإعدادات الافتراضية ببيانات مشروع Firebase الحقيقي الخاص بك.
+                            </p>
+                            <code className="block bg-gray-100 p-2 mt-4 text-xs font-mono rounded">
+                                const firebaseConfig = <span className="text-red-700">/* ضع بيانات إعداد مشروعك هنا */</span>;
+                            </code>
+                        </div>
+                    </div>
+                );
+            }
+
 
             return (
                 <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans" dir="rtl">
