@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة تتبع أداء الكول سنتر - مباشر</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Configure Inter font -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
+        body {
+            font-family: 'Inter', Tahoma, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+    <!-- Load React and React DOM -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Load Babel for JSX and modern JS support -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Load Firebase -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot, collection, query, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.0.0/firebase-firestore.js";
+        window.firebase = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged,
+            getFirestore, doc, setDoc, onSnapshot, collection, query, serverTimestamp
+        };
+    </script>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useCallback, useMemo } = React;
+        const { initializeApp, getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, getFirestore, doc, setDoc, onSnapshot, collection, query, serverTimestamp } = window.firebase;
+
+        // --- Icons (using inline SVG placeholder as lucide-react is not directly supported in single HTML file) ---
+        const Icon = ({ iconName, className }) => {
+            const icons = {
+                Zap: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>,
+                Users: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h-4M7 20h4M12 10V4M12 4L9 7M12 4L15 7M5 16h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>,
+                Phone: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.5l1 4h5l1-4H19a2 2 0 012 2v14a2 2 0 01-2 2h-4.5l-1-4h-5l-1 4H5a2 2 0 01-2-2V5z" /></svg>,
+                RefreshCcw: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>,
+                Target: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10H4a2 2 0 00-2 2v2a2 2 0 002 2h10m6-6l2-2m-2 2l-2-2m2 2l2 2m-2-2v4m-6-6v4m-4-6l-2-2m-2 2l2-2m-2 2l-2 2m2 2v4m10-10l2-2m-2 2l-2-2m2 2l2 2m-2-2v4" /></svg>,
+                Calendar: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>,
+                UserCheck: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7m-9 9l-4-4m-4 4h18" /></svg>,
+                TrendingUp: <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" /></svg>
+            };
+            return icons[iconName] || <span className={className}>*</span>;
+        };
+        
+        // --- Configuration (Configuration is duplicated here for single-file operation) ---
+        const appId = 'default-app-id'; // Use a default since __app_id is not globally available in this HTML file
+        const firebaseConfig = { /* Paste your actual Firebase config here if you know it, otherwise, the Canvas environment handles auth */ };
+        const initialAuthToken = null; 
+
+        const GOOGLE_SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/YOUR_APPS_SCRIPT_ID/exec'; // REPLACE ME
+
+        const TARGETS = {
+            CALLS_DAILY: 140, CALLS_WEEKLY: 840, CALLS_MONTHLY: 3640,
+            BOOKINGS_DAILY: 21, BOOKINGS_WEEKLY: 126, BOOKINGS_MONTHLY: 546,
+            ATTENDANCE_DAILY: 11, ATTENDANCE_WEEKLY: 66, ATTENDANCE_MONTHLY: 273,
+            CONV_RATE_TARGET: 0.25, ATTENDANCE_RATE_TARGET: 0.50,
+        };
+
+        const THRESHOLDS = { GREEN: 1.00, YELLOW: 0.70, RED: 0.00 };
+        const EMPLOYEE_NAMES = ['بيان', 'سلمى', 'سحر'];
+        
+        const ENCOURAGEMENT_PHRASES = {
+            GREEN: ["عمل رائع! استمر في تحقيق الأهداف وأكثر.", "أداء ممتاز يفوق التوقعات، أنت نجم حقيقي!"],
+            YELLOW: ["أداء جيد! على بُعد خطوات من الهدف، يمكنك فعلها.", "استمر في التقدم، القليل من الجهد الإضافي يُحدث فرقاً كبيراً."],
+            RED: ["ابدأ بقوة اليوم! الأهداف في متناول يدك.", "كل يوم هو بداية جديدة، ركز لتحقيق التارقت!"],
+        };
+
+        // --- Helper Functions (Duplicated from original React file) ---
+
+        const getStatus = (actual, target) => {
+            if (target === 0 || isNaN(target)) {
+                return { color: 'text-gray-500 bg-gray-100', status: 'لا يوجد هدف', englishStatus: 'No Target', phrase: 'ننتظر تحديد الأهداف.', ratio: 0 };
+            }
+            const ratio = actual / target;
+            let color, status, englishStatus, phrases;
+
+            if (ratio >= THRESHOLDS.GREEN) {
+                color = 'text-green-500 bg-green-100';
+                status = 'ممتاز';
+                englishStatus = 'Excellent';
+                phrases = ENCOURAGEMENT_PHRASES.GREEN;
+            } else if (ratio >= THRESHOLDS.YELLOW) {
+                color = 'text-yellow-500 bg-yellow-100';
+                status = 'متوسط';
+                englishStatus = 'Average';
+                phrases = ENCOURAGEMENT_PHRASES.YELLOW;
+            } else {
+                color = 'text-red-500 bg-red-100';
+                status = 'ضعيف';
+                englishStatus = 'Poor';
+                phrases = ENCOURAGEMENT_PHRASES.RED;
+            }
+
+            const phrase = phrases[Math.floor(Math.random() * phrases.length)];
+            return { color, status, englishStatus, phrase, ratio: ratio * 100 };
+        };
+
+        const PerformanceIndicator = ({ title, metric, target, IconName, unit = '' }) => {
+            const { color, status, ratio } = getStatus(metric, target);
+            const strokeColor = color.match(/text-([a-z]+)-(\d+)/)?.[0].replace('text', 'border') || 'border-gray-400';
+            
+            const percentage = ratio ? Math.min(100, Math.round(ratio)) : 0;
+            const circumference = 2 * Math.PI * 50;
+            const offset = circumference - (percentage / 100) * circumference;
+
+            return (
+                <div className="flex flex-col items-center p-4 bg-white rounded-xl shadow-lg transition-all duration-300 hover:shadow-xl border border-gray-100">
+                    <div className="relative h-28 w-28">
+                        <svg className="w-full h-full transform -rotate-90">
+                            <circle
+                                className="text-gray-200"
+                                strokeWidth="10"
+                                stroke="currentColor"
+                                fill="transparent"
+                                r="50"
+                                cx="60"
+                                cy="60"
+                            />
+                            <circle
+                                className={strokeColor.replace('border', 'text')}
+                                strokeWidth="10"
+                                strokeDasharray={circumference}
+                                strokeDashoffset={offset}
+                                strokeLinecap="round"
+                                stroke="currentColor"
+                                fill="transparent"
+                                r="50"
+                                cx="60"
+                                cy="60"
+                            />
+                        </svg>
+                        <div className="absolute top-0 right-0 left-0 bottom-0 flex flex-col items-center justify-center">
+                            <Icon iconName={IconName} className={`w-6 h-6 ${color.split(' ')[0]}`} />
+                            <span className={`text-lg font-bold ${color.split(' ')[0]} mt-1`}>
+                                {percentage}%
+                            </span>
+                        </div>
+                    </div>
+                    <h3 className="text-xl font-extrabold text-gray-800 mt-3">{title}</h3>
+                    <p className={`text-sm font-semibold ${color.split(' ')[0]}`}>{status}</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                        الإنجاز: {metric.toLocaleString()} {unit} / {target.toLocaleString()} {unit}
+                    </p>
+                </div>
+            );
+        };
+
+        const RateIndicator = ({ title, metric, target, IconName }) => {
+            const displayMetric = (metric * 100).toFixed(1);
+            const displayTarget = (target * 100).toFixed(0);
+            const { color, status } = getStatus(metric, target);
+
+            return (
+                <div className="p-4 bg-white rounded-xl shadow-lg border border-gray-100 flex items-center justify-between transition duration-300 hover:shadow-xl">
+                    <div className="flex items-center">
+                        <div className={`p-3 rounded-full ${color.split(' ')[1]} ml-3`}>
+                            <Icon iconName={IconName} className={`w-5 h-5 ${color.split(' ')[0]}`} />
+                        </div>
+                        <div>
+                            <h3 className="text-md font-semibold text-gray-700">{title}</h3>
+                            <p className="text-sm text-gray-500">الهدف: {displayTarget}%</p>
+                        </div>
+                    </div>
+                    <div className="text-center">
+                        <p className={`text-xl font-bold ${color.split(' ')[0]}`}>{displayMetric}%</p>
+                        <p className={`text-xs font-semibold ${color.split(' ')[0]}`}>{status}</p>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
+            const [userId, setUserId] = useState(null);
+            const [userName, setUserName] = useState(EMPLOYEE_NAMES[0]);
+            const [isAuthReady, setIsAuthReady] = useState(false);
+            const [dailyCalls, setDailyCalls] = useState('');
+            const [dailyBookings, setDailyBookings] = useState('');
+            const [dailyAttendance, setDailyAttendance] = useState('');
+            const [dailyLeads, setDailyLeads] = useState('50');
+            const [employees, setEmployees] = useState({});
+            const [loading, setLoading] = useState(true);
+            const [statusMessage, setStatusMessage] = useState('');
+
+            const todayDate = useMemo(() => {
+                return new Date().toLocaleString('ar-SA', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric',
+                    calendar: 'gregory'
+                });
+            }, []);
+
+            // 1. Firebase Initialization and Authentication
+            useEffect(() => {
+                let app, firestore, authInstance;
+                try {
+                    // Initialize Firebase using the global window.firebase imports
+                    app = initializeApp(firebaseConfig);
+                    firestore = getFirestore(app);
+                    authInstance = getAuth(app);
+                    setDb(firestore);
+                    setAuth(authInstance);
+
+                    const unsubscribe = onAuthStateChanged(authInstance, async (user) => {
+                        if (user) {
+                            setUserId(user.uid);
+                            let currentUserName = localStorage.getItem('selectedEmployeeName') || EMPLOYEE_NAMES[0];
+                            setUserName(currentUserName);
+                            setIsAuthReady(true);
+                        } else {
+                            try {
+                                if (initialAuthToken) {
+                                    await signInWithCustomToken(authInstance, initialAuthToken);
+                                } else {
+                                    await signInAnonymously(authInstance);
+                                }
+                            } catch (error) {
+                                console.error("Firebase Auth Error:", error);
+                                setIsAuthReady(true);
+                            }
+                        }
+                        setLoading(false);
+                    });
+
+                    return () => unsubscribe();
+                } catch (e) {
+                    console.error("Failed to initialize Firebase:", e);
+                    setStatusMessage("فشل في تهيئة قاعدة البيانات.");
+                    setLoading(false);
+                }
+            }, []);
+
+            // 2. Firestore Data Listener
+            useEffect(() => {
+                if (!db || !isAuthReady) return;
+
+                const collectionPath = `artifacts/${appId}/public/data/callCenterPerformance`;
+                const q = query(collection(db, collectionPath));
+
+                const unsubscribe = onSnapshot(q, (snapshot) => {
+                    const newEmployees = {};
+                    snapshot.forEach((doc) => {
+                        newEmployees[doc.id] = { id: doc.id, ...doc.data() };
+                    });
+                    setEmployees(newEmployees);
+                }, (error) => {
+                    console.error("Firestore snapshot error:", error);
+                    setStatusMessage("خطأ في جلب بيانات الأداء.");
+                });
+
+                return () => unsubscribe();
+            }, [db, isAuthReady]);
+
+
+            // Calculate Weekly/Monthly Performance (Mock Accumulation Logic)
+            const calculateAggregatePerformance = useCallback((calls, bookings, attendance, currentPerformance = {}) => {
+                const today = new Date();
+                const currentMonth = today.getMonth();
+                const lastUpdateDate = currentPerformance.lastUpdate ? new Date(currentPerformance.lastUpdate.seconds * 1000) : null;
+                
+                let shouldResetMonthly = false;
+                let shouldResetWeekly = false;
+
+                if (lastUpdateDate) {
+                    const lastUpdateMonth = lastUpdateDate.getMonth();
+                    if (currentMonth !== lastUpdateMonth) {
+                        shouldResetMonthly = true;
+                        shouldResetWeekly = true;
+                    } else {
+                        const lastUpdateDayOfWeek = lastUpdateDate.getDay();
+                        const todayDayOfWeek = today.getDay(); 
+                        if (todayDayOfWeek === 0 && lastUpdateDayOfWeek !== 0) {
+                            shouldResetWeekly = true;
+                        }
+                    }
+                }
+                
+                let newCallsWeekly = currentPerformance.callsWeekly || 0;
+                let newCallsMonthly = currentPerformance.callsMonthly || 0;
+                let newBookingsWeekly = currentPerformance.bookingsWeekly || 0;
+                let newBookingsMonthly = currentPerformance.bookingsMonthly || 0;
+                let newAttendanceWeekly = currentPerformance.attendanceWeekly || 0;
+                let newAttendanceMonthly = currentPerformance.attendanceMonthly || 0;
+
+                if (shouldResetMonthly) {
+                    newCallsMonthly = 0;
+                    newBookingsMonthly = 0;
+                    newAttendanceMonthly = 0;
+                }
+
+                if (shouldResetWeekly) {
+                    newCallsWeekly = 0;
+                    newBookingsWeekly = 0;
+                    newAttendanceWeekly = 0;
+                }
+                
+                newCallsWeekly += calls;
+                newCallsMonthly += calls;
+                newBookingsWeekly += bookings;
+                newBookingsMonthly += bookings;
+                newAttendanceWeekly += attendance;
+                newAttendanceMonthly += attendance;
+
+                return {
+                    callsDaily: calls,
+                    callsWeekly: newCallsWeekly,
+                    callsMonthly: newCallsMonthly,
+                    bookingsDaily: bookings,
+                    bookingsWeekly: newBookingsWeekly,
+                    bookingsMonthly: newBookingsMonthly,
+                    attendanceDaily: attendance,
+                    attendanceWeekly: newAttendanceWeekly,
+                    attendanceMonthly: newAttendanceMonthly,
+                    shouldArchive: shouldResetMonthly ? true : false,
+                    lastUpdate: new Date() // Use local Date for calculateAggregatePerformance context
+                };
+            }, []);
+            
+            const sendToGoogleSheet = async (data) => {
+                if (GOOGLE_SHEET_WEBHOOK_URL.includes('YOUR_APPS_SCRIPT_ID')) {
+                    console.warn("Skipping Google Sheet export: GOOGLE_SHEET_WEBHOOK_URL is not configured.");
+                    return;
+                }
+                
+                const payload = {
+                    action: data.action,
+                    ...data,
+                    timestamp: new Date().toISOString(),
+                };
+                
+                try {
+                    await fetch(GOOGLE_SHEET_WEBHOOK_URL, {
+                        method: 'POST',
+                        mode: 'no-cors', 
+                        cache: 'no-cache',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    console.log("Attempted to send data to Google Sheet Webhook.");
+                } catch (error) {
+                    console.error("Error sending data to Google Sheet:", error);
+                }
+            };
+
+            // 3. Handle Performance Submission
+            const handleSubmit = useCallback(async (e) => {
+                e.preventDefault();
+                if (!db || !userName) {
+                    setStatusMessage("الرجاء تحديد الاسم وتسجيل الدخول أولاً.");
+                    return;
+                }
+
+                const callsValue = parseInt(dailyCalls || '0', 10);
+                const bookingsValue = parseInt(dailyBookings || '0', 10);
+                const attendanceValue = parseInt(dailyAttendance || '0', 10);
+                const leadsValue = parseInt(dailyLeads || '0', 10); 
+
+                if (callsValue < 0 || bookingsValue < 0 || attendanceValue < 0 || leadsValue < 0) {
+                    setStatusMessage("يرجى إدخال أرقام صحيحة وموجبة لجميع الحقول.");
+                    return;
+                }
+                
+                const currentPerformance = employees[userName] || {}; 
+                const calculatedData = calculateAggregatePerformance(callsValue, bookingsValue, attendanceValue, currentPerformance);
+                
+                const convRate = leadsValue > 0 ? bookingsValue / leadsValue : 0;
+                const attendanceRate = bookingsValue > 0 ? attendanceValue / bookingsValue : 0; 
+
+                const dailyDataToSave = {
+                    name: userName, 
+                    callsDaily: callsValue, 
+                    dailyBookings: bookingsValue,
+                    attendanceDaily: attendanceValue, 
+                    dailyLeads: leadsValue, 
+                    convRate: convRate, 
+                    attendanceRate: attendanceRate, 
+                    callsWeekly: calculatedData.callsWeekly, 
+                    callsMonthly: calculatedData.callsMonthly,
+                    bookingsWeekly: calculatedData.bookingsWeekly,
+                    bookingsMonthly: calculatedData.bookingsMonthly,
+                    attendanceWeekly: calculatedData.attendanceWeekly,
+                    attendanceMonthly: calculatedData.attendanceMonthly,
+                    lastUpdate: serverTimestamp(),
+                };
+
+                try {
+                    // 1. Save to Firestore (for real-time dashboard)
+                    const docRef = doc(db, `artifacts/${appId}/public/data/callCenterPerformance`, userName);
+                    await setDoc(docRef, dailyDataToSave, { merge: true });
+
+                    // 2. Send to Google Sheet (for daily report archiving)
+                    const sheetData = {
+                        action: calculatedData.shouldArchive ? 'archiveAndInsert' : 'insertData',
+                        employeeName: userName,
+                        calls: callsValue, 
+                        bookings: bookingsValue, 
+                        attendance: attendanceValue, 
+                        leads: leadsValue, 
+                        conversionRate: (convRate * 100).toFixed(2) + '%',
+                        attendanceRate: (attendanceRate * 100).toFixed(2) + '%',
+                        dailyStatus: getStatus(callsValue, TARGETS.CALLS_DAILY).status, 
+                    };
+                    await sendToGoogleSheet(sheetData);
+
+                    setStatusMessage(`تم تسجيل أداء اليوم بنجاح لـ ${userName}. وتم إرسال التقرير اليومي.`);
+                    setDailyCalls(''); setDailyBookings(''); setDailyAttendance(''); setDailyLeads('50'); 
+                } catch (error) {
+                    console.error("Error submitting performance:", error);
+                    setStatusMessage(`فشل في حفظ البيانات: ${error.message}`);
+                }
+            }, [db, userId, userName, dailyCalls, dailyBookings, dailyAttendance, dailyLeads, calculateAggregatePerformance, employees]);
+            
+
+            const handleNameChange = (e) => {
+                const newName = e.target.value;
+                setUserName(newName);
+                localStorage.setItem('selectedEmployeeName', newName);
+            };
+
+            const currentEmployeeData = employees[userName] || {};
+            const lastUpdateTimestamp = currentEmployeeData.lastUpdate ? new Date(currentEmployeeData.lastUpdate.seconds * 1000).toLocaleString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', calendar: 'gregory' }) : 'لا يوجد سجل سابق';
+
+            const dailyStatus = useMemo(() => getStatus(currentEmployeeData.callsDaily || 0, TARGETS.CALLS_DAILY), [currentEmployeeData.callsDaily]);
+            const weeklyStatus = useMemo(() => getStatus(currentEmployeeData.callsWeekly || 0, TARGETS.CALLS_WEEKLY), [currentEmployeeData.callsWeekly]);
+            const monthlyStatus = useMemo(() => getStatus(currentEmployeeData.callsMonthly || 0, TARGETS.CALLS_MONTHLY), [currentEmployeeData.callsMonthly]);
+            
+            const conversionRateStatus = useMemo(() => getStatus(currentEmployeeData.convRate || 0, TARGETS.CONV_RATE_TARGET), [currentEmployeeData.convRate]);
+            const attendanceRateStatus = useMemo(() => getStatus(currentEmployeeData.attendanceRate || 0, TARGETS.ATTENDANCE_RATE_TARGET), [currentEmployeeData.attendanceRate]);
+
+            const overallStatusColor = dailyStatus.color.split(' ')[0];
+            const overallPhrase = dailyStatus.phrase;
+
+            const renderCell = (value, status) => (
+                <div className={`px-2 py-1 rounded-lg text-sm font-semibold text-center ${status.color.split(' ')[1]}`}>
+                    {value}
+                    <span className={`text-xs block ${status.color.split(' ')[0]}`}>{status.englishStatus}</span>
+                </div>
+            );
+
+            if (loading) {
+                return (
+                    <div className="flex justify-center items-center h-screen bg-gray-50">
+                        <svg className="animate-spin w-8 h-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.995 8.995 0 0020 12a9 9 0 10-9 9m4.29-4.29L19 14m-2 4l2-2" /></svg>
+                        <span className="mr-3 text-lg font-medium text-indigo-600">جارٍ التحميل...</span>
+                    </div>
+                );
+            }
+
+            return (
+                <div className="min-h-screen bg-gray-50 p-4 sm:p-8 font-sans" dir="rtl">
+                    <div className="max-w-7xl mx-auto">
+                        
+                        <header className="flex flex-col sm:flex-row justify-between items-start mb-4 pb-2 border-b">
+                            <div className="mb-4 sm:mb-0">
+                                <h1 className="text-3xl font-extrabold text-indigo-700 flex items-center">
+                                    <Icon iconName="Zap" className="w-8 h-8 ml-3 text-indigo-500" /> لوحة تحكم أداء الكول سنتر
+                                </h1>
+                                <p className="mt-1 text-base font-semibold text-gray-600 flex items-center">
+                                    <Icon iconName="Calendar" className="w-4 h-4 ml-2 text-indigo-500" />
+                                    {todayDate}
+                                </p>
+                            </div>
+                            
+                            {userId && (
+                                <div className="text-sm text-gray-600 mt-2 sm:mt-0 sm:text-right">
+                                    <span className="font-semibold block">رمز المستخدم:</span>{' '}
+                                    <span className="font-mono bg-indigo-50 px-2 py-1 rounded-md text-indigo-800 text-xs">
+                                        {userId}
+                                    </span>
+                                </div>
+                            )}
+                        </header>
+
+                        <section className="mb-10 p-6 bg-white rounded-2xl shadow-xl border border-indigo-100">
+                            <div className="flex items-center justify-between mb-6 border-b pb-4">
+                                <h2 className="text-2xl font-bold text-gray-800">
+                                    مؤشر أدائي ({userName})
+                                </h2>
+                                <select
+                                    value={userName}
+                                    onChange={handleNameChange}
+                                    className="px-3 py-1 border border-gray-300 rounded-lg text-sm text-center shadow-sm w-32 sm:w-48 transition duration-150 focus:ring-indigo-500 focus:border-indigo-500 bg-white"
+                                >
+                                    {EMPLOYEE_NAMES.map(name => (
+                                        <option key={name} value={name}>{name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-4">
+                                آخر تحديث: <span className="font-semibold text-gray-700">{lastUpdateTimestamp}</span>
+                            </p>
+
+                            <div className={`p-4 mb-6 rounded-xl ${overallStatusColor.replace('text', 'bg').replace('500', '100')} flex items-start shadow-md`}>
+                                <Icon iconName="Zap" className={`w-6 h-6 ml-3 ${overallStatusColor}`} />
+                                <p className={`font-semibold ${overallStatusColor}`}>{overallPhrase}</p>
+                            </div>
+
+
+                            <h3 className="text-xl font-bold text-gray-700 mb-4">أداء المكالمات (الـ KPI الرئيسي)</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-8">
+                                <PerformanceIndicator title="يومي" metric={currentEmployeeData.callsDaily || 0} target={TARGETS.CALLS_DAILY} IconName="Phone" unit="اتصال" />
+                                <PerformanceIndicator title="أسبوعي" metric={currentEmployeeData.callsWeekly || 0} target={TARGETS.CALLS_WEEKLY} IconName="RefreshCcw" unit="اتصال" />
+                                <PerformanceIndicator title="شهري" metric={currentEmployeeData.callsMonthly || 0} target={TARGETS.CALLS_MONTHLY} IconName="Target" unit="اتصال" />
+                            </div>
+
+                            <h3 className="text-xl font-bold text-gray-700 mb-4 mt-8 pt-4 border-t">معدلات الأداء (النسب المئوية)</h3>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+                                <RateIndicator 
+                                    title={`نسبة التحويل (حجوزات لكل داتا تسويقية)`} 
+                                    metric={currentEmployeeData.convRate || 0} 
+                                    target={TARGETS.CONV_RATE_TARGET} 
+                                    IconName="TrendingUp" 
+                                />
+                                <RateIndicator 
+                                    title="نسبة الحضور (حجوزات إلى حضور فعلي)" 
+                                    metric={currentEmployeeData.attendanceRate || 0} 
+                                    target={TARGETS.ATTENDANCE_RATE_TARGET} 
+                                    IconName="UserCheck" 
+                                />
+                            </div>
+
+
+                            <form onSubmit={handleSubmit} className="p-6 border border-dashed border-gray-300 rounded-xl bg-gray-50">
+                                <h3 className="text-xl font-bold text-gray-700 mb-4">إدخال أداء اليوم</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                                    
+                                    <div className="w-full">
+                                        <label htmlFor="dailyCalls" className="block text-sm font-medium text-gray-700 mb-1">
+                                            1. عدد المكالمات المُنجزة (هدف: {TARGETS.CALLS_DAILY})
+                                        </label>
+                                        <input type="number" id="dailyCalls" value={dailyCalls} onChange={(e) => setDailyCalls(e.target.value)} placeholder="140 اتصال" min="0" className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg focus:ring-indigo-500 focus:border-indigo-500 text-right" />
+                                    </div>
+
+                                    <div className="w-full">
+                                        <label htmlFor="dailyBookings" className="block text-sm font-medium text-gray-700 mb-1">
+                                            2. عدد الحجوزات المؤكدة (هدف: {TARGETS.BOOKINGS_DAILY})
+                                        </label>
+                                        <input type="number" id="dailyBookings" value={dailyBookings} onChange={(e) => setDailyBookings(e.target.value)} placeholder="21 حجز" min="0" className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg focus:ring-indigo-500 focus:border-indigo-500 text-right" />
+                                    </div>
+                                    
+                                    <div className="w-full">
+                                        <label htmlFor="dailyAttendance" className="block text-sm font-medium text-gray-700 mb-1">
+                                            3. عدد الحضور الفعلي (هدف: {TARGETS.ATTENDANCE_DAILY})
+                                        </label>
+                                        <input type="number" id="dailyAttendance" value={dailyAttendance} onChange={(e) => setDailyAttendance(e.target.value)} placeholder="11 عميل" min="0" className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg focus:ring-indigo-500 focus:border-indigo-500 text-right" />
+                                    </div>
+
+                                    <div className="w-full">
+                                        <label htmlFor="dailyLeads" className="block text-sm font-medium text-gray-700 mb-1">
+                                            4. عدد الداتا التسويقية (Leads)
+                                        </label>
+                                        <input type="number" id="dailyLeads" value={dailyLeads} onChange={(e) => setDailyLeads(e.target.value)} placeholder="50 رقم" min="0" className="w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm text-lg focus:ring-indigo-500 focus:border-indigo-500 text-right" />
+                                    </div>
+
+                                    <button type="submit" className="w-full h-11 px-6 py-2 text-lg font-semibold text-white bg-indigo-600 rounded-lg shadow-lg hover:bg-indigo-700 transition duration-150 transform hover:scale-[1.02] mt-4 md:mt-0" disabled={!isAuthReady}>
+                                        تسجيل الأداء
+                                    </button>
+                                </div>
+                            </form>
+
+                            {statusMessage && (
+                                <p className="mt-4 text-center text-sm font-medium text-indigo-600">{statusMessage}</p>
+                            )}
+
+                        </section>
+
+                        <section className="mt-10 p-6 bg-white rounded-2xl shadow-xl border border-indigo-100">
+                            <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-6 border-b pb-4">
+                                <Icon iconName="Users" className="w-6 h-6 ml-2 text-indigo-500" />
+                                تتبع أداء جميع الموظفين (ملخص يومي للمؤشرات الرئيسية)
+                            </h2>
+
+                            <div className="overflow-x-auto">
+                                <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الاسم / Name</th>
+                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">المكالمات (هدف: {TARGETS.CALLS_DAILY}) / Calls</th>
+                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحجوزات (هدف: {TARGETS.BOOKINGS_DAILY}) / Bookings</th>
+                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحضور الفعلي (هدف: {TARGETS.ATTENDANCE_DAILY}) / Attendance</th>
+                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">نسبة التحويل (هدف: 25%) / Conv. Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="bg-white divide-y divide-gray-200">
+                                        {Object.keys(employees).map(employeeKey => {
+                                            const employee = employees[employeeKey];
+                                            const isCurrentUser = employee.name === userName;
+
+                                            const callsStatus = getStatus(employee.callsDaily || 0, TARGETS.CALLS_DAILY);
+                                            const bookingsStatus = getStatus(employee.dailyBookings || 0, TARGETS.BOOKINGS_DAILY);
+                                            const attendanceStatus = getStatus(employee.attendanceDaily || 0, TARGETS.ATTENDANCE_DAILY);
+                                            const convStatus = getStatus(employee.convRate || 0, TARGETS.CONV_RATE_TARGET);
+
+                                            const renderCell = (value, status) => (
+                                                <div className={`px-2 py-1 rounded-lg text-sm font-semibold text-center ${status.color.split(' ')[1]}`}>
+                                                    {value}
+                                                    <span className={`text-xs block ${status.color.split(' ')[0]}`}>{status.englishStatus}</span>
+                                                </div>
+                                            );
+                                            
+                                            return (
+                                                <tr key={employeeKey} className={isCurrentUser ? 'bg-indigo-50' : 'hover:bg-gray-50'}>
+                                                    <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                        {employee.name} {isCurrentUser && <span className="text-indigo-600 font-bold text-xs">(Current)</span>}
+                                                    </td>
+                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                        {renderCell(employee.callsDaily || 0, callsStatus)}
+                                                    </td>
+                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                        {renderCell(employee.dailyBookings || 0, bookingsStatus)}
+                                                    </td>
+                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                        {renderCell(employee.attendanceDaily || 0, attendanceStatus)}
+                                                    </td>
+                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                        {renderCell(((employee.convRate || 0) * 100).toFixed(1) + '%', convStatus)}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                            {Object.keys(employees).length === 0 && (
+                                <p className="text-center text-gray-500 py-4">لا يوجد بيانات للموظفين بعد. ابدأ بإدخال بياناتك!</p>
+                            )}
+                        </section>
+
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
