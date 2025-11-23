@@ -56,11 +56,11 @@
 
         // --- Configuration (Targets, Thresholds, Phrases) ---
         
-        // 1. **مهم جداً**: هذه المتغيرات الافتراضية تم استبدالها ببيانات مشروعك الحقيقية
-        const appId = 'call-center-tracker'; // تم الحصول عليها من projectId
+        // تم استبدال هذا المتغير بـ projectId الحقيقي من إعداداتك لربط التطبيق بقاعدة بياناتك
+        const appId = 'call-center-tracker'; 
         const initialAuthToken = null; 
         
-        // ****** VITAL: FIREBASE CONFIGURATION (BASED ON YOUR SCREENSHOT) ******
+        // ****** VITAL: FIREBASE CONFIGURATION (المفتاح الحقيقي لمشروعك) ******
         const firebaseConfig = { 
             apiKey: "AIzaSyA_dbbHDgZXHD9MeO-Sp0LOlXzjmdmfO60",
             authDomain: "call-center-tracker.firebaseapp.com",
@@ -74,7 +74,8 @@
 
         const ADMIN_PASSCODE = '8974'; // كلمة المرور الإدارية
 
-        const GOOGLE_SHEET_WEBHOOK_URL = 'https://script.google.com/macros/s/YOUR_APPS_SCRIPT_ID/exec'; // REPLACE ME
+        // ****** VITAL: ZAPIER WEBHOOK URL (رابط الـ Webhook الخاص بك) ******
+        const GOOGLE_SHEET_WEBHOOK_URL = 'https://hooks.zapier.com/hooks/catch/24588037/u8sstr5/'; 
 
         const TARGETS = {
             CALLS_DAILY: 140, CALLS_WEEKLY: 840, CALLS_MONTHLY: 3640,
@@ -366,8 +367,8 @@
 
             const sendToGoogleSheet = async (data) => {
                 // Simplified webhook call
-                if (GOOGLE_SHEET_WEBHOOK_URL.includes('YOUR_APPS_SCRIPT_ID')) {
-                    console.warn("Skipping Google Sheet export: GOOGLE_SHEET_WEBHOOK_URL is not configured.");
+                if (GOOGLE_SHEET_WEBHOOK_URL.includes('YOUR_ZAPIER_HOOK_URL')) { // Check against Zapier placeholder
+                    console.warn("Skipping Webhook export: Zapier URL is not configured.");
                     return;
                 }
                 const payload = { action: data.action, ...data, timestamp: new Date().toISOString() };
@@ -379,7 +380,7 @@
                         body: JSON.stringify(payload),
                     });
                 } catch (error) {
-                    console.error("Error sending data to Google Sheet:", error);
+                    console.error("Error sending data to Zapier:", error);
                 }
             };
 
