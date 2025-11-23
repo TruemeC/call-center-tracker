@@ -56,13 +56,15 @@
 
         // --- Configuration (Targets, Thresholds, Phrases) ---
         
-        // Fix: Ensure these variables are defined even if the global ones are missing (as in GitHub Pages)
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+        // 1. **مهم جداً**: هذه المتغيرات الافتراضية يجب استبدالها بإعدادات مشروعك الحقيقي على Firebase Console
+        const appId = 'default-app-id'; // يرجى استخدام قيمة حقيقية لتجنب المشاكل
+        const initialAuthToken = null; 
         
-        // Fix: Use a placeholder object for firebaseConfig when global is missing to prevent crash
+        // ****** VITAL: PASTE YOUR ACTUAL FIREBASE CONFIGURATION HERE ******
         const defaultFirebaseConfig = { projectId: 'missing-project-id', apiKey: 'dummy-key' };
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : defaultFirebaseConfig;
+        // قم بتعديل هذا السطر ولصق الكائن الحقيقي لـ firebaseConfig الذي نسخته من Firebase Console
+        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : defaultFirebaseConfig; 
+        // ****************************************************************
 
         const ADMIN_PASSCODE = '8974'; // كلمة المرور الإدارية
 
@@ -233,13 +235,13 @@
             useEffect(() => {
                 let app, firestore, authInstance;
                 
-                // Fix: Check if firebaseConfig has meaningful data (i.e. not the default dummy data)
+                // Check if firebaseConfig has meaningful data 
                 const isConfigValid = firebaseConfig.projectId && firebaseConfig.projectId !== 'missing-project-id';
 
                 if (!isConfigValid) {
                     setLoading(false);
-                    setStatusMessage('فشل في تهيئة قاعدة البيانات. تأكد من تهيئة Firebase بشكل صحيح.');
-                    return; // Stop initialization if config is invalid
+                    // This message triggers the user-friendly error screen
+                    return; 
                 }
 
                 try {
@@ -295,7 +297,8 @@
                     }
                 }, (error) => {
                     console.error("Firestore snapshot error:", error);
-                    setStatusMessage("خطأ في جلب بيانات الأداء.");
+                    // This is the "Missing or insufficient permissions" error
+                    setStatusMessage("خطأ في جلب البيانات: يرجى مراجعة قواعد أمان Firebase (Security Rules).");
                 });
 
                 return () => unsubscribe();
@@ -441,7 +444,7 @@
                     setDailyCalls(''); setDailyBookings(''); setDailyAttendance(''); setDailyLeads('50'); 
                 } catch (error) {
                     console.error("Error submitting performance:", error);
-                    setStatusMessage(`فشل في حفظ البيانات: ${error.message}`);
+                    setStatusMessage(`فشل في حفظ البيانات: ${error.message}. يرجى مراجعة قواعد أمان Firebase.`);
                 }
             }, [db, userName, dailyCalls, dailyBookings, dailyAttendance, dailyLeads, calculateAggregatePerformance, employees, editingId]);
 
