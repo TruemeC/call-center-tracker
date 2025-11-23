@@ -56,14 +56,20 @@
 
         // --- Configuration (Targets, Thresholds, Phrases) ---
         
-        // 1. **مهم جداً**: هذه المتغيرات الافتراضية يجب استبدالها بإعدادات مشروعك الحقيقي على Firebase Console
-        const appId = 'default-app-id'; // يرجى استخدام قيمة حقيقية لتجنب المشاكل
+        // 1. **مهم جداً**: هذه المتغيرات الافتراضية تم استبدالها ببيانات مشروعك الحقيقية
+        const appId = 'call-center-tracker'; // تم الحصول عليها من projectId
         const initialAuthToken = null; 
         
-        // ****** VITAL: PASTE YOUR ACTUAL FIREBASE CONFIGURATION HERE ******
-        const defaultFirebaseConfig = { projectId: 'missing-project-id', apiKey: 'dummy-key' };
-        // قم بتعديل هذا السطر ولصق الكائن الحقيقي لـ firebaseConfig الذي نسخته من Firebase Console
-        const firebaseConfig = (typeof __firebase_config !== 'undefined' && __firebase_config) ? JSON.parse(__firebase_config) : defaultFirebaseConfig; 
+        // ****** VITAL: FIREBASE CONFIGURATION (BASED ON YOUR SCREENSHOT) ******
+        const firebaseConfig = { 
+            apiKey: "AIzaSyA_dbbHDgZXHD9MeO-Sp0LOlXzjmdmfO60",
+            authDomain: "call-center-tracker.firebaseapp.com",
+            projectId: "call-center-tracker",
+            storageBucket: "call-center-tracker.appspot.com",
+            messagingSenderId: "27240160136",
+            appId: "1:27240160136:web:8c1298ca8e9e1a2881383d",
+            measurementId: "G-K6HNM9M7LØD"
+        };
         // ****************************************************************
 
         const ADMIN_PASSCODE = '8974'; // كلمة المرور الإدارية
