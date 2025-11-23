@@ -373,12 +373,14 @@
                 }
                 const payload = { action: data.action, ...data, timestamp: new Date().toISOString() };
                 try {
-                    await fetch(GOOGLE_SHEET_WEBHOOK_URL, {
+                    // Send to Zapier using POST method
+                    const response = await fetch(GOOGLE_SHEET_WEBHOOK_URL, {
                         method: 'POST',
-                        mode: 'no-cors', 
+                        mode: 'no-cors', // Use no-cors for maximum compatibility with external webhooks
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload),
                     });
+                    console.log("Data sent to Zapier webhook successfully.");
                 } catch (error) {
                     console.error("Error sending data to Zapier:", error);
                 }
