@@ -203,16 +203,19 @@ const SmartBookingsChart = ({ employees }) => {
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { 
+                            display: true,
                             position: 'bottom', 
                             rtl: true, 
                             labels: { 
                                 font: { family: 'Inter', size: 12, weight: 'bold' },
                                 padding: 15,
+                                usePointStyle: true,
                                 generateLabels: function(chart) {
                                     const data = chart.data;
                                     return data.labels.map((label, i) => ({
                                         text: `${label}: ${data.datasets[0].data[i]} حجز`,
                                         fillStyle: data.datasets[0].backgroundColor[i],
+                                        strokeStyle: data.datasets[0].backgroundColor[i],
                                         hidden: false,
                                         index: i
                                     }));
