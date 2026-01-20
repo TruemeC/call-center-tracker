@@ -6,6 +6,7 @@
     <title>لوحة تتبع أداء الكول سنتر - مباشر</title>
     <!-- Load Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Configure Inter font -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap');
@@ -110,6 +111,87 @@
             };
             return icons[iconName] || <span className={className}>*</span>;
         };
+// --- Smart Bookings Chart Component (مكون الشارت الذكي) ---
+const SmartBookingsChart = ({ employees }) => {
+    const chartRef = React.useRef(null);
+    const chartInstance = React.useRef(null);
+
+    React.useEffect(() => {
+        if (chartRef.current && Object.keys(employees).length > 0) {
+            const ctx = chartRef.current.getContext('2d');
+            const todayStr = new Date().toDateString();
+            
+            // 1. تحديد أحدث تاريخ إدخال
+            let latestUpdateDateStr = "";
+            Object.values(employees).forEach(emp => {
+                if (emp.lastUpdate) {
+                    const dateStr = new Date(emp.lastUpdate.seconds * 1000).toDateString();
+                    if (!latestUpdateDateStr || new Date(dateStr) > new Date(latestUpdateDateStr)) {
+                        latestUpdateDateStr = dateStr;
+                    }
+                }
+            });
+
+            // 2. هل بدأ العمل اليوم؟
+            const isAnyEntryToday = latestUpdateDateStr === todayStr;
+
+            // 3. تجهيز البيانات
+            const dataValues = EMPLOYEE_NAMES.map(name => {
+                const empData = employees[name];
+                if (!empData) return 0;
+                if (isAnyEntryToday) {
+                    // عرض بيانات اليوم فقط
+                    const updateDate = empData.lastUpdate ? new Date(empData.lastUpdate.seconds * 1000).toDateString() : "";
+                    return updateDate === todayStr ? (empData.dailyBookings || 0) : 0;
+                } else {
+                    // عرض آخر بيانات مسجلة
+                    return empData.dailyBookings || 0;
+                }
+            });
+
+            if (chartInstance.current) {
+                chartInstance.current.destroy();
+            }
+
+            chartInstance.current = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: EMPLOYEE_NAMES,
+                    datasets: [{
+                        data: dataValues,
+                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', rtl: true, labels: { font: { family: 'Inter', size: 12, weight: 'bold' } } },
+                        title: {
+                            display: true,
+                            text: isAnyEntryToday ? 'توزيع حجوزات اليوم (جارٍ العد)' : 'توزيع حجوزات آخر إدخال',
+                            font: { size: 14, weight: 'bold' },
+                            color: isAnyEntryToday ? '#4f46e5' : '#6b7280'
+                        }
+                    }
+                }
+            });
+        }
+    }, [employees]);
+
+    return (
+        <div className="bg-white p-6 rounded-2xl shadow-xl border border-indigo-50 flex flex-col items-center h-full min-h-[350px]">
+            <h3 className="text-sm font-black text-gray-700 mb-2 flex items-center">
+                <Icon iconName="PieChart" className="w-4 h-4 ml-2 text-indigo-500" /> تحليل توزيع الحجوزات
+            </h3>
+            <div className="relative w-full flex-grow">
+                <canvas ref={chartRef}></canvas>
+            </div>
+        </div>
+    );
+};
         
         // --- Helper Functions ---
 
@@ -759,60 +841,70 @@
                             <p className="mt-4 text-center text-sm font-medium text-indigo-600">{statusMessage}</p>
                         )}
 
-                        {/* Employee Tracking Table (Visible in both modes) */}
-                        <section className="mt-10 p-6 bg-white rounded-2xl shadow-xl border border-indigo-100">
-                            <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-6 border-b pb-4">
-                                <Icon iconName="Users" className="w-6 h-6 ml-2 text-indigo-500" />
-                                تتبع أداء جميع الموظفين (ملخص يومي للمؤشرات الرئيسية)
-                            </h2>
-
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200">
-                                    <thead className="bg-gray-50">
-                                        <tr>
-                                            <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الاسم / Name</th>
-                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">المكالمات (هدف: {TARGETS.CALLS_DAILY}) / Calls</th>
-                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحجوزات (هدف: {TARGETS.BOOKINGS_DAILY}) / Bookings</th>
-                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحضور الفعلي (هدف: {TARGETS.ATTENDANCE_DAILY}) / Attendance</th>
-                                            <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">نسبة التحويل (هدف: 25%) / Conv. Rate</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white divide-y divide-gray-200">
-                                        {Object.keys(employees).map(employeeKey => {
-                                            const employee = employees[employeeKey];
-
-                                            const callsStatus = getStatus(employee.callsDaily || 0, TARGETS.CALLS_DAILY);
-                                            const bookingsStatus = getStatus(employee.dailyBookings || 0, TARGETS.BOOKINGS_DAILY);
-                                            const attendanceStatus = getStatus(employee.attendanceDaily || 0, TARGETS.ATTENDANCE_DAILY);
-                                            const convStatus = getStatus(employee.convRate || 0, TARGETS.CONV_RATE_TARGET);
-                                            
-                                            return (
-                                                <tr key={employeeKey} className={employee.name === userName ? 'bg-indigo-50' : 'hover:bg-gray-50'}>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                                        {employee.name} {employee.name === userName && <span className="text-indigo-600 font-bold text-xs">(Current)</span>}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                        {renderCell(employee.callsDaily || 0, callsStatus)}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                        {renderCell(employee.dailyBookings || 0, bookingsStatus)}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                        {renderCell(employee.attendanceDaily || 0, attendanceStatus)}
-                                                    </td>
-                                                    <td className="px-3 py-4 whitespace-nowrap text-sm">
-                                                        {renderCell(((employee.convRate || 0) * 100).toFixed(1) + '%', convStatus)}
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                        {/* --- قسم الجدول والشارت الجديد --- */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-10">
+                            {/* العمود الأول: الشارت */}
+                            <div className="lg:col-span-1">
+                                <SmartBookingsChart employees={employees} />
                             </div>
-                            {Object.keys(employees).length === 0 && (
-                                <p className="text-center text-gray-500 py-4">لا يوجد بيانات للموظفين بعد. ابدأ بإدخال بياناتك!</p>
-                            )}
-                        </section>
+
+                            {/* العمود الثاني: الجدول القديم كما هو */}
+                            <div className="lg:col-span-2">
+                                <section className="p-6 bg-white rounded-2xl shadow-xl border border-indigo-100 h-full overflow-x-auto">
+                                    <h2 className="text-2xl font-bold text-gray-800 flex items-center mb-6 border-b pb-4">
+                                        <Icon iconName="Users" className="w-6 h-6 ml-2 text-indigo-500" />
+                                        تتبع أداء جميع الموظفين (ملخص يومي للمؤشرات الرئيسية)
+                                    </h2>
+
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">الاسم / Name</th>
+                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">المكالمات (هدف: {TARGETS.CALLS_DAILY}) / Calls</th>
+                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحجوزات (هدف: {TARGETS.BOOKINGS_DAILY}) / Bookings</th>
+                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">الحضور الفعلي (هدف: {TARGETS.ATTENDANCE_DAILY}) / Attendance</th>
+                                                    <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">نسبة التحويل (هدف: 25%) / Conv. Rate</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-200">
+                                                {Object.keys(employees).map(employeeKey => {
+                                                    const employee = employees[employeeKey];
+
+                                                    const callsStatus = getStatus(employee.callsDaily || 0, TARGETS.CALLS_DAILY);
+                                                    const bookingsStatus = getStatus(employee.dailyBookings || 0, TARGETS.BOOKINGS_DAILY);
+                                                    const attendanceStatus = getStatus(employee.attendanceDaily || 0, TARGETS.ATTENDANCE_DAILY);
+                                                    const convStatus = getStatus(employee.convRate || 0, TARGETS.CONV_RATE_TARGET);
+                                                    
+                                                    return (
+                                                        <tr key={employeeKey} className={employee.name === userName ? 'bg-indigo-50' : 'hover:bg-gray-50'}>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                                                {employee.name} {employee.name === userName && <span className="text-indigo-600 font-bold text-xs">(Current)</span>}
+                                                            </td>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                                {renderCell(employee.callsDaily || 0, callsStatus)}
+                                                            </td>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                                {renderCell(employee.dailyBookings || 0, bookingsStatus)}
+                                                            </td>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                                {renderCell(employee.attendanceDaily || 0, attendanceStatus)}
+                                                            </td>
+                                                            <td className="px-3 py-4 whitespace-nowrap text-sm">
+                                                                {renderCell(((employee.convRate || 0) * 100).toFixed(1) + '%', convStatus)}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {Object.keys(employees).length === 0 && (
+                                        <p className="text-center text-gray-500 py-4">لا يوجد بيانات للموظفين بعد. ابدأ بإدخال بياناتك!</p>
+                                    )}
+                                </section>
+                            </div>
+                        </div>
 
                     </div>
                 </div>
