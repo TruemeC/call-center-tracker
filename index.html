@@ -151,14 +151,14 @@ const SmartBookingsChart = ({ employees }) => {
                 return { name, value: 0, color: allColors[i] };
             });
 
+            // حساب المجموع
+            const total = allData.reduce((sum, item) => sum + item.value, 0);
+
             // للدائرة: فقط اللي عندهم قيم > 0
             const filteredData = allData.filter(item => item.value > 0);
             const dataValues = filteredData.map(item => item.value);
-            const labels = filteredData.map(item => item.name);
+            const chartLabels = filteredData.map(item => item.name);
             const colors = filteredData.map(item => item.color);
-            
-            // 4. حساب المجموع والنسب
-            const total = allData.reduce((sum, item) => sum + item.value, 0);
 
             if (chartInstance.current) {
                 chartInstance.current.destroy();
@@ -168,7 +168,7 @@ const SmartBookingsChart = ({ employees }) => {
             const datalabelsPlugin = {
                 id: 'datalabels',
                 afterDatasetsDraw: function(chart) {
-                    const ctx = chart.ctx;
+                    const chartCtx = chart.ctx;
                     chart.data.datasets.forEach((dataset, i) => {
                         const meta = chart.getDatasetMeta(i);
                         meta.data.forEach((element, index) => {
@@ -178,20 +178,26 @@ const SmartBookingsChart = ({ employees }) => {
                             const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
                             const position = element.tooltipPosition();
                             
-                            ctx.fillStyle = '#ffffff';
-                            ctx.font = 'bold 14px Inter';
-                            ctx.textAlign = 'center';
-                            ctx.textBaseline = 'middle';
-                            ctx.fillText(`${percentage}%`, position.x, position.y);
+                            chartCtx.fillStyle = '#ffffff';
+                            chartCtx.font = 'bold 14px Inter';
+                            chartCtx.textAlign = 'center';
+                            chartCtx.textBaseline = 'middle';
+                            chartCtx.fillText(`${percentage}%`, position.x, position.y);
                         });
                     });
                 }
             };
 
+            // تجهيز labels للـ Legend (كل الموظفين)
+            const legendLabels = allData.map(item => {
+                const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
+                return `${item.name}: ${item.value} (${percentage}%)`;
+            });
+
             chartInstance.current = new Chart(ctx, {
                 type: 'pie',
                 data: {
-                    labels: labels,
+                    labels: chartLabels,
                     datasets: [{
                         data: dataValues,
                         backgroundColor: colors,
@@ -204,27 +210,7 @@ const SmartBookingsChart = ({ employees }) => {
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { 
-                            display: true,
-                            position: 'bottom', 
-                            rtl: true, 
-                            labels: { 
-                                font: { family: 'Inter', size: 12, weight: 'bold' },
-                                padding: 15,
-                                usePointStyle: true,
-                                generateLabels: function(chart) {
-                                    // إظهار كل الموظفين في Legend
-                                    return allData.map((item, i) => {
-                                        const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
-                                        return {
-                                            text: `${item.name}: ${item.value} (${percentage}%)`,
-                                            fillStyle: item.color,
-                                            strokeStyle: item.color,
-                                            hidden: false,
-                                            index: i
-                                        };
-                                    });
-                                }
-                            } 
+                            display: false
                         },
                         title: {
                             display: true,
@@ -246,6 +232,18 @@ const SmartBookingsChart = ({ employees }) => {
                 },
                 plugins: [datalabelsPlugin]
             });
+
+            // إنشاء Legend مخصص يدوياً
+            const legendContainer = document.getElementById('custom-legend');
+            if (legendContainer) {
+                legendContainer.innerHTML = allData.map(item => {
+                    const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
+                    return `<div style="display: inline-flex; align-items: center; margin: 5px 10px; font-family: Inter; font-size: 12px; font-weight: bold;">
+                        <span style="width: 12px; height: 12px; background: ${item.color}; border-radius: 50%; margin-left: 6px;"></span>
+                        ${item.name}: ${item.value} (${percentage}%)
+                    </div>`;
+                }).join('');
+            }
         }
     }, [employees]);
 
@@ -257,6 +255,7 @@ const SmartBookingsChart = ({ employees }) => {
             <div className="relative w-full flex-grow">
                 <canvas ref={chartRef}></canvas>
             </div>
+            <div id="custom-legend" style="display: flex; flex-wrap: wrap; justify-content: center; margin-top: 10px; direction: rtl;"></div>
         </div>
     );
 };
