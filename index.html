@@ -132,76 +132,45 @@ const SmartBookingsChart = ({ employees }) => {
                 }
             });
 
-            // 2. تحديد تاريخ المقارنة
+            // 2. تحديد تاريخ المقارنة (اليوم إذا فيه إدخال، وإلا آخر تاريخ إدخال)
             const isAnyEntryToday = latestUpdateDateStr === todayStr;
             const comparisonDateStr = isAnyEntryToday ? todayStr : latestUpdateDateStr;
 
-            // 3. تجهيز البيانات لكل الموظفين
-            const allColors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899'];
-            
-            const allData = EMPLOYEE_NAMES.map((name, i) => {
+            // 3. تجهيز البيانات - فقط من نفس تاريخ المقارنة
+            const dataValues = EMPLOYEE_NAMES.map(name => {
                 const empData = employees[name];
-                if (!empData || !empData.lastUpdate) return { name, value: 0, color: allColors[i] };
+                if (!empData || !empData.lastUpdate) return 0;
                 
                 const empUpdateDateStr = new Date(empData.lastUpdate.seconds * 1000).toDateString();
                 
+                // فقط إذا كان تاريخ إدخال الموظف = تاريخ المقارنة
                 if (empUpdateDateStr === comparisonDateStr) {
-                    return { name, value: empData.dailyBookings || 0, color: allColors[i] };
+                    return empData.dailyBookings || 0;
                 }
-                return { name, value: 0, color: allColors[i] };
+                return 0; // الموظف ما أدخل في هذا التاريخ
             });
 
-            // حساب المجموع
-            const total = allData.reduce((sum, item) => sum + item.value, 0);
+            // 4. حساب المجموع والنسب المئوية
+            const total = dataValues.reduce((sum, val) => sum + val, 0);
+            const percentages = dataValues.map(val => total > 0 ? ((val / total) * 100).toFixed(1) : 0);
 
-            // للدائرة: فقط اللي عندهم قيم > 0
-            const filteredData = allData.filter(item => item.value > 0);
-            const dataValues = filteredData.map(item => item.value);
-            const chartLabels = filteredData.map(item => item.name);
-            const colors = filteredData.map(item => item.color);
+            // 5. تجهيز الـ Labels مع النسب
+            const labelsWithPercent = EMPLOYEE_NAMES.map((name, i) => {
+                return `${name}: ${dataValues[i]} (${percentages[i]}%)`;
+            });
 
             if (chartInstance.current) {
                 chartInstance.current.destroy();
             }
 
-            // Plugin لعرض النسب داخل القطع
-            const datalabelsPlugin = {
-                id: 'datalabels',
-                afterDatasetsDraw: function(chart) {
-                    const chartCtx = chart.ctx;
-                    chart.data.datasets.forEach((dataset, i) => {
-                        const meta = chart.getDatasetMeta(i);
-                        meta.data.forEach((element, index) => {
-                            const value = dataset.data[index];
-                            if (value === 0) return;
-                            
-                            const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
-                            const position = element.tooltipPosition();
-                            
-                            chartCtx.fillStyle = '#ffffff';
-                            chartCtx.font = 'bold 14px Inter';
-                            chartCtx.textAlign = 'center';
-                            chartCtx.textBaseline = 'middle';
-                            chartCtx.fillText(`${percentage}%`, position.x, position.y);
-                        });
-                    });
-                }
-            };
-
-            // تجهيز labels للـ Legend (كل الموظفين)
-            const legendLabels = allData.map(item => {
-                const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
-                return `${item.name}: ${item.value} (${percentage}%)`;
-            });
-
             chartInstance.current = new Chart(ctx, {
-                type: 'pie',
+                type: 'pie', // دائرة كاملة
                 data: {
-                    labels: chartLabels,
+                    labels: labelsWithPercent,
                     datasets: [{
                         data: dataValues,
-                        backgroundColor: colors,
-                        borderWidth: 3,
+                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
+                        borderWidth: 2,
                         borderColor: '#ffffff'
                     }]
                 },
@@ -210,7 +179,12 @@ const SmartBookingsChart = ({ employees }) => {
                     maintainAspectRatio: false,
                     plugins: {
                         legend: { 
-                            display: false
+                            position: 'bottom', 
+                            rtl: true, 
+                            labels: { 
+                                font: { family: 'Inter', size: 11, weight: 'bold' },
+                                padding: 15
+                            } 
                         },
                         title: {
                             display: true,
@@ -224,26 +198,13 @@ const SmartBookingsChart = ({ employees }) => {
                                 label: function(context) {
                                     const value = context.raw;
                                     const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                                    return `${context.label}: ${value} حجز (${percentage}%)`;
+                                    return `${value} حجز (${percentage}%)`;
                                 }
                             }
                         }
                     }
-                },
-                plugins: [datalabelsPlugin]
+                }
             });
-
-            // إنشاء Legend مخصص يدوياً
-            const legendContainer = document.getElementById('custom-legend');
-            if (legendContainer) {
-                legendContainer.innerHTML = allData.map(item => {
-                    const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : '0.0';
-                    return `<div style="display: inline-flex; align-items: center; margin: 5px 10px; font-family: Inter; font-size: 12px; font-weight: bold;">
-                        <span style="width: 12px; height: 12px; background: ${item.color}; border-radius: 50%; margin-left: 6px;"></span>
-                        ${item.name}: ${item.value} (${percentage}%)
-                    </div>`;
-                }).join('');
-            }
         }
     }, [employees]);
 
@@ -255,7 +216,6 @@ const SmartBookingsChart = ({ employees }) => {
             <div className="relative w-full flex-grow">
                 <canvas ref={chartRef}></canvas>
             </div>
-            <div id="custom-legend" style="display: flex; flex-wrap: wrap; justify-content: center; margin-top: 10px; direction: rtl;"></div>
         </div>
     );
 };
