@@ -132,45 +132,69 @@ const SmartBookingsChart = ({ employees }) => {
                 }
             });
 
-            // 2. تحديد تاريخ المقارنة (اليوم إذا فيه إدخال، وإلا آخر تاريخ إدخال)
+            // 2. تحديد تاريخ المقارنة
             const isAnyEntryToday = latestUpdateDateStr === todayStr;
             const comparisonDateStr = isAnyEntryToday ? todayStr : latestUpdateDateStr;
 
             // 3. تجهيز البيانات - فقط من نفس تاريخ المقارنة
-            const dataValues = EMPLOYEE_NAMES.map(name => {
+            const allColors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899'];
+            
+            // فلترة الموظفين اللي عندهم قيم > 0 فقط
+            const filteredData = EMPLOYEE_NAMES.map((name, i) => {
                 const empData = employees[name];
-                if (!empData || !empData.lastUpdate) return 0;
+                if (!empData || !empData.lastUpdate) return { name, value: 0, color: allColors[i] };
                 
                 const empUpdateDateStr = new Date(empData.lastUpdate.seconds * 1000).toDateString();
                 
-                // فقط إذا كان تاريخ إدخال الموظف = تاريخ المقارنة
                 if (empUpdateDateStr === comparisonDateStr) {
-                    return empData.dailyBookings || 0;
+                    return { name, value: empData.dailyBookings || 0, color: allColors[i] };
                 }
-                return 0; // الموظف ما أدخل في هذا التاريخ
-            });
+                return { name, value: 0, color: allColors[i] };
+            }).filter(item => item.value > 0); // إخفاء اللي قيمتهم 0
 
-            // 4. حساب المجموع والنسب المئوية
+            const dataValues = filteredData.map(item => item.value);
+            const labels = filteredData.map(item => item.name);
+            const colors = filteredData.map(item => item.color);
+            
+            // 4. حساب المجموع والنسب
             const total = dataValues.reduce((sum, val) => sum + val, 0);
-            const percentages = dataValues.map(val => total > 0 ? ((val / total) * 100).toFixed(1) : 0);
-
-            // 5. تجهيز الـ Labels مع النسب
-            const labelsWithPercent = EMPLOYEE_NAMES.map((name, i) => {
-                return `${name}: ${dataValues[i]} (${percentages[i]}%)`;
-            });
 
             if (chartInstance.current) {
                 chartInstance.current.destroy();
             }
 
+            // Plugin لعرض النسب داخل القطع
+            const datalabelsPlugin = {
+                id: 'datalabels',
+                afterDatasetsDraw: function(chart) {
+                    const ctx = chart.ctx;
+                    chart.data.datasets.forEach((dataset, i) => {
+                        const meta = chart.getDatasetMeta(i);
+                        meta.data.forEach((element, index) => {
+                            const value = dataset.data[index];
+                            if (value === 0) return;
+                            
+                            const percentage = total > 0 ? ((value / total) * 100).toFixed(0) : 0;
+                            const position = element.tooltipPosition();
+                            
+                            ctx.fillStyle = '#ffffff';
+                            ctx.font = 'bold 14px Inter';
+                            ctx.textAlign = 'center';
+                            ctx.textBaseline = 'middle';
+                            ctx.fillText(`${percentage}%`, position.x, position.y);
+                        });
+                    });
+                }
+            };
+
             chartInstance.current = new Chart(ctx, {
-                type: 'pie', // دائرة كاملة
+                type: 'pie',
                 data: {
-                    labels: labelsWithPercent,
+                    labels: labels,
                     datasets: [{
                         data: dataValues,
-                        backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ec4899'],
-                        borderWidth: 2,
+                        backgroundColor: colors,
+                        borderWidth: 3,
                         borderColor: '#ffffff'
                     }]
                 },
@@ -182,8 +206,17 @@ const SmartBookingsChart = ({ employees }) => {
                             position: 'bottom', 
                             rtl: true, 
                             labels: { 
-                                font: { family: 'Inter', size: 11, weight: 'bold' },
-                                padding: 15
+                                font: { family: 'Inter', size: 12, weight: 'bold' },
+                                padding: 15,
+                                generateLabels: function(chart) {
+                                    const data = chart.data;
+                                    return data.labels.map((label, i) => ({
+                                        text: `${label}: ${data.datasets[0].data[i]} حجز`,
+                                        fillStyle: data.datasets[0].backgroundColor[i],
+                                        hidden: false,
+                                        index: i
+                                    }));
+                                }
                             } 
                         },
                         title: {
@@ -198,12 +231,13 @@ const SmartBookingsChart = ({ employees }) => {
                                 label: function(context) {
                                     const value = context.raw;
                                     const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0;
-                                    return `${value} حجز (${percentage}%)`;
+                                    return `${context.label}: ${value} حجز (${percentage}%)`;
                                 }
                             }
                         }
                     }
-                }
+                },
+                plugins: [datalabelsPlugin]
             });
         }
     }, [employees]);
