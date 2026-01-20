@@ -136,11 +136,10 @@ const SmartBookingsChart = ({ employees }) => {
             const isAnyEntryToday = latestUpdateDateStr === todayStr;
             const comparisonDateStr = isAnyEntryToday ? todayStr : latestUpdateDateStr;
 
-            // 3. تجهيز البيانات - فقط من نفس تاريخ المقارنة
+            // 3. تجهيز البيانات لكل الموظفين
             const allColors = ['#6366f1', '#10b981', '#f59e0b', '#ec4899'];
             
-            // فلترة الموظفين اللي عندهم قيم > 0 فقط
-            const filteredData = EMPLOYEE_NAMES.map((name, i) => {
+            const allData = EMPLOYEE_NAMES.map((name, i) => {
                 const empData = employees[name];
                 if (!empData || !empData.lastUpdate) return { name, value: 0, color: allColors[i] };
                 
@@ -150,14 +149,16 @@ const SmartBookingsChart = ({ employees }) => {
                     return { name, value: empData.dailyBookings || 0, color: allColors[i] };
                 }
                 return { name, value: 0, color: allColors[i] };
-            }).filter(item => item.value > 0); // إخفاء اللي قيمتهم 0
+            });
 
+            // للدائرة: فقط اللي عندهم قيم > 0
+            const filteredData = allData.filter(item => item.value > 0);
             const dataValues = filteredData.map(item => item.value);
             const labels = filteredData.map(item => item.name);
             const colors = filteredData.map(item => item.color);
             
             // 4. حساب المجموع والنسب
-            const total = dataValues.reduce((sum, val) => sum + val, 0);
+            const total = allData.reduce((sum, item) => sum + item.value, 0);
 
             if (chartInstance.current) {
                 chartInstance.current.destroy();
@@ -211,14 +212,17 @@ const SmartBookingsChart = ({ employees }) => {
                                 padding: 15,
                                 usePointStyle: true,
                                 generateLabels: function(chart) {
-                                    const data = chart.data;
-                                    return data.labels.map((label, i) => ({
-                                        text: `${label}: ${data.datasets[0].data[i]} حجز`,
-                                        fillStyle: data.datasets[0].backgroundColor[i],
-                                        strokeStyle: data.datasets[0].backgroundColor[i],
-                                        hidden: false,
-                                        index: i
-                                    }));
+                                    // إظهار كل الموظفين في Legend
+                                    return allData.map((item, i) => {
+                                        const percentage = total > 0 ? ((item.value / total) * 100).toFixed(1) : 0;
+                                        return {
+                                            text: `${item.name}: ${item.value} (${percentage}%)`,
+                                            fillStyle: item.color,
+                                            strokeStyle: item.color,
+                                            hidden: false,
+                                            index: i
+                                        };
+                                    });
                                 }
                             } 
                         },
